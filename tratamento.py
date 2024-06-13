@@ -1,5 +1,7 @@
 import pandas as pd
 import json, numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
 
 #carregando e normalizando json
 with open('Pandas - Limpeza e tratamento de dados\limpeza-tratamento-dados\dataset-telecon.json') as df:
@@ -48,4 +50,58 @@ df_sem_nulos = df_sem_vazio.dropna(subset=colunas_dados_vazios)
 #resetando o index do df
 df_sem_nulos.reset_index(drop=True, inplace=True)
 
-#print(df_sem_vazio.info())
+#procurando por outliers
+'''sns.boxplot(x=df_sem_nulos['cliente.tempo_servico'])
+plt.show()'''
+
+#selecionando o 1º quartil de valores (25%) e o 3º (75%) - lembrando que a marca de 50% é a mediana
+Q1 = df_sem_nulos['cliente.tempo_servico'].quantile(.25)
+Q3 = df_sem_nulos['cliente.tempo_servico'].quantile(.75)
+IQR = Q3 - Q1
+lim_inf = Q1 - 1.5*IQR
+lim_sup = Q3 + 1.5*IQR
+
+#para achar os outliers, vamos encontrar os índices desses valores
+outliers_index = (df_sem_nulos['cliente.tempo_servico'] < lim_inf) | (df_sem_nulos['cliente.tempo_servico'] > lim_sup)
+
+#mudando os valores errados de tempo de serviço dividindo o total pelo mensal
+df_sem_nulos.loc[outliers_index, 'cliente.tempo_servico'] = np.ceil(
+    df_sem_nulos.loc[outliers_index, 'conta.cobranca.Total'] / df_sem_nulos.loc[outliers_index, 'conta.cobranca.mensal']
+)
+'''sns.boxplot(x=df_sem_nulos['cliente.tempo_servico'])
+plt.show()'''
+
+#refazendo o filtro de outliers para filtrar apenas os valores que ainda são outliers
+Q1 = df_sem_nulos['cliente.tempo_servico'].quantile(.25)
+Q3 = df_sem_nulos['cliente.tempo_servico'].quantile(.75)
+IQR = Q3 - Q1
+limite_inf = Q1 - 1.5*IQR
+limite_sup = Q3 + 1.5*IQR
+
+outliers_index2 = (df_sem_nulos['cliente.tempo_servico'] < limite_inf) | (df_sem_nulos['cliente.tempo_servico'] > limite_sup)
+
+#criando um novo dataframe sem os outliers
+df_sem_out = df_sem_nulos[~outliers_index2]
+df_sem_out.reset_index(drop=True, inplace=True)
+
+#checando se os outliers realmente não existem mais
+'''sns.boxplot(x=df_sem_out['cliente.tempo_servico'])
+plt.show()'''
+
+#substituindo strings por valores numéricos para o modelo de ML funcionar melhor
+df_sem_id = df_sem_out.drop('id_cliente', axis=1)
+mapeamento = {'nao': 0, 'sim': 1,'masculino': 0, 'feminino': 1}
+
+#achando as colunas que contém só respostas com as chaves do mapeamento
+'''for col in df_sem_id.columns:
+  print(f'Coluna: {col}') #nome da coluna
+  print(df_sem_id[col].unique()) #traz os valores únicos dessa coluna
+  print('-' * 30)'''
+
+colunas = ['Churn', 'cliente.genero', 'cliente.parceiro', 'cliente.dependentes', 'telefone.servico_telefone', 'conta.faturamente_eletronico']
+df_sem_id[colunas] = df_sem_id[colunas].replace(mapeamento)
+
+#transformando o resto das variáveis qualitativas em valores numéricos
+df_dummies = pd.get_dummies(df_sem_id, dtype=int)
+
+#print(df_dummies.info())
